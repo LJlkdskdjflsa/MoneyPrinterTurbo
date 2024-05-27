@@ -1204,24 +1204,49 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
 
     try:
         for _, (offset, sub) in enumerate(zip(sub_maker.offset, sub_maker.subs)):
-            _start_time, end_time = offset
+            _start_time, _end_time = offset
             if start_time < 0:
                 start_time = _start_time
 
             sub = unescape(sub)
-            sub_line += sub
-            sub_text = match_line(sub_line, sub_index)
-            if sub_text:
+
+            # 如果字幕长度超过12个字符，则分割成两部分
+            if len(sub) > 12:
+                # Calculate the split point and split the subtitle into two parts
+                split_point = len(sub) // 2
+                sub_part1 = sub[:split_point].strip()
+                sub_part2 = sub[split_point:].strip()
+
+                # Calculate the mid time for the split subtitles
+                mid_time = (_start_time + _end_time) / 2
+
+                # Create two subtitle entries
+                sub_index += 1
+                line1 = formatter(
+                    idx=sub_index,
+                    start_time=_start_time,
+                    end_time=mid_time,
+                    sub_text=sub_part1,
+                )
+                sub_items.append(line1)
+
+                sub_index += 1
+                line2 = formatter(
+                    idx=sub_index,
+                    start_time=mid_time,
+                    end_time=_end_time,
+                    sub_text=sub_part2,
+                )
+                sub_items.append(line2)
+            else:
                 sub_index += 1
                 line = formatter(
                     idx=sub_index,
-                    start_time=start_time,
-                    end_time=end_time,
-                    sub_text=sub_text,
+                    start_time=_start_time,
+                    end_time=_end_time,
+                    sub_text=sub,
                 )
                 sub_items.append(line)
-                start_time = -1.0
-                sub_line = ""
 
         if len(sub_items) == len(script_lines):
             with open(subtitle_file, "w", encoding="utf-8") as file:
