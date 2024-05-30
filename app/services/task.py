@@ -40,6 +40,10 @@ def start(task_id, params: VideoParams):
 
     logger.info("\n\n## generating video script")
     video_script = params.video_script.strip()
+
+    ## 1. generate video script, if not provided, generate it
+
+    # generate video script, if not provided, generate it
     if not video_script:
         video_script = llm.generate_script(
             video_subject=video_subject,
@@ -49,6 +53,7 @@ def start(task_id, params: VideoParams):
     else:
         logger.debug(f"video script: \n{video_script}")
 
+    # if video script is not generated, failed
     if not video_script:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
         logger.error("failed to generate video script.")
@@ -58,6 +63,10 @@ def start(task_id, params: VideoParams):
 
     logger.info("\n\n## generating video terms")
     video_terms = params.video_terms
+
+    ## 2. generate video terms, if not provided, generate it
+
+    # if video terms are not provided, generate them
     if not video_terms:
         video_terms = llm.generate_terms(
             video_subject=video_subject, video_script=video_script, amount=5
@@ -72,6 +81,7 @@ def start(task_id, params: VideoParams):
 
         logger.debug(f"video terms: {utils.to_json(video_terms)}")
 
+    # if video terms are not generated, failed
     if not video_terms:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
         logger.error("failed to generate video terms.")
@@ -89,11 +99,17 @@ def start(task_id, params: VideoParams):
 
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=20)
 
+    ## 3. generate audio
+
     logger.info("\n\n## generating audio")
     audio_file = path.join(utils.task_dir(task_id), f"audio.mp3")
+
+    # generate audio
     sub_maker = voice.tts(
         text=video_script, voice_name=voice_name, voice_file=audio_file
     )
+
+    # if audio is not generated, failed
     if sub_maker is None:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
         logger.error(
@@ -108,6 +124,8 @@ def start(task_id, params: VideoParams):
     audio_duration = math.ceil(audio_duration)
 
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=30)
+
+    ## 4. generate subtitle
 
     subtitle_path = ""
     if params.subtitle_enabled:

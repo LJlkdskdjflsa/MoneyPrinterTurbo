@@ -3,14 +3,15 @@ import os
 import re
 from datetime import datetime
 from xml.sax.saxutils import unescape
+
+import edge_tts
+from edge_tts import SubMaker, submaker
 from edge_tts.submaker import mktimestamp
 from loguru import logger
-from edge_tts import submaker, SubMaker
-import edge_tts
 from moviepy.video.tools import subtitles
 
 from app.config import config
-from app.utils import utils
+from app.utils import string_utils, utils
 
 
 def get_all_azure_voices(filter_locals=None) -> list[str]:
@@ -988,7 +989,7 @@ Name: zh-CN-XiaoxiaoMultilingualNeural-V2
 Gender: Female
     """.strip()
     voices = []
-    name = ''
+    name = ""
     for line in voices_str.split("\n"):
         line = line.strip()
         if not line:
@@ -1008,7 +1009,7 @@ Gender: Female
                             voices.append(f"{name}-{gender}")
                 else:
                     voices.append(f"{name}-{gender}")
-                name = ''
+                name = ""
     voices.sort()
     return voices
 
@@ -1049,7 +1050,9 @@ def azure_tts_v1(text: str, voice_name: str, voice_file: str) -> [SubMaker, None
                         if chunk["type"] == "audio":
                             file.write(chunk["data"])
                         elif chunk["type"] == "WordBoundary":
-                            sub_maker.create_sub((chunk["offset"], chunk["duration"]), chunk["text"])
+                            sub_maker.create_sub(
+                                (chunk["offset"], chunk["duration"]), chunk["text"]
+                            )
                 return sub_maker
 
             sub_maker = asyncio.run(_do())
@@ -1074,8 +1077,12 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> [SubMaker, None
     def _format_duration_to_offset(duration) -> int:
         if isinstance(duration, str):
             time_obj = datetime.strptime(duration, "%H:%M:%S.%f")
-            milliseconds = (time_obj.hour * 3600000) + (time_obj.minute * 60000) + (time_obj.second * 1000) + (
-                    time_obj.microsecond // 1000)
+            milliseconds = (
+                (time_obj.hour * 3600000)
+                + (time_obj.minute * 60000)
+                + (time_obj.second * 1000)
+                + (time_obj.microsecond // 1000)
+            )
             return milliseconds * 10000
 
         if isinstance(duration, int):
@@ -1108,20 +1115,29 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> [SubMaker, None
             # Creates an instance of a speech config with specified subscription key and service region.
             speech_key = config.azure.get("speech_key", "")
             service_region = config.azure.get("speech_region", "")
-            audio_config = speechsdk.audio.AudioOutputConfig(filename=voice_file, use_default_speaker=True)
-            speech_config = speechsdk.SpeechConfig(subscription=speech_key,
-                                                   region=service_region)
+            audio_config = speechsdk.audio.AudioOutputConfig(
+                filename=voice_file, use_default_speaker=True
+            )
+            speech_config = speechsdk.SpeechConfig(
+                subscription=speech_key, region=service_region
+            )
             speech_config.speech_synthesis_voice_name = voice_name
             # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_RequestSentenceBoundary,
             #                            value='true')
-            speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_RequestWordBoundary,
-                                       value='true')
+            speech_config.set_property(
+                property_id=speechsdk.PropertyId.SpeechServiceResponse_RequestWordBoundary,
+                value="true",
+            )
 
             speech_config.set_speech_synthesis_output_format(
-                speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3)
-            speech_synthesizer = speechsdk.SpeechSynthesizer(audio_config=audio_config,
-                                                             speech_config=speech_config)
-            speech_synthesizer.synthesis_word_boundary.connect(speech_synthesizer_word_boundary_cb)
+                speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3
+            )
+            speech_synthesizer = speechsdk.SpeechSynthesizer(
+                audio_config=audio_config, speech_config=speech_config
+            )
+            speech_synthesizer.synthesis_word_boundary.connect(
+                speech_synthesizer_word_boundary_cb
+            )
 
             result = speech_synthesizer.speak_text_async(text).get()
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
@@ -1129,9 +1145,13 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> [SubMaker, None
                 return sub_maker
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation_details = result.cancellation_details
-                logger.error(f"azure v2 speech synthesis canceled: {cancellation_details.reason}")
+                logger.error(
+                    f"azure v2 speech synthesis canceled: {cancellation_details.reason}"
+                )
                 if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                    logger.error(f"azure v2 speech synthesis error: {cancellation_details.error_details}")
+                    logger.error(
+                        f"azure v2 speech synthesis error: {cancellation_details.error_details}"
+                    )
             logger.info(f"completed, output file: {voice_file}")
         except Exception as e:
             logger.error(f"failed, error: {str(e)}")
@@ -1139,7 +1159,20 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> [SubMaker, None
 
 
 def _format_text(text: str) -> str:
-    # text = text.replace("\n", " ")
+    """
+    Formats the input text by removing specific characters and trimming whitespace.
+
+    This function replaces certain characters (square brackets, parentheses, and curly braces)
+    with spaces and then trims any leading or trailing whitespace from the text. This is useful
+    for preparing the text for further processing, such as subtitle generation, where these
+    characters might interfere with the formatting or readability of the text.
+
+    Args:
+        text (str): The input text to be formatted.
+
+    Returns:
+        str: The formatted text with specified characters replaced and whitespace trimmed.
+    """
     text = text.replace("[", " ")
     text = text.replace("]", " ")
     text = text.replace("(", " ")
@@ -1158,6 +1191,9 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
     3. 生成新的字幕文件
     """
 
+    # text example: "Achieving career mastery in today's competitive environment requires a blend of skills refinement, continuous learning, and strategic networking. To boost your career, start by setting clear, achievable goals to guide your progress. Focusing on skills development, especially in areas demanding higher expertise, can significantly elevate your professional value. Incorporate regular feedback sessions with mentors or supervisors to identify improvement areas and to fine-tune your career path. Additionally, building a robust network is crucial. Attend industry conferences, engage in professional groups, and connect with influencers in your field through social media platforms. These connections can provide valuable insights, recommend learning resources, and offer opportunities that might not be accessible otherwise. Lastly, adapt to changes and trends in your industry by committing to lifelong learning through courses, workshops, and seminars, ensuring you stay relevant and adaptable in your career."
+
+    # format text -> let text do not contain punctuation
     text = _format_text(text)
 
     def formatter(idx: int, start_time: float, end_time: float, sub_text: str) -> str:
@@ -1168,17 +1204,21 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
         """
         start_t = mktimestamp(start_time).replace(".", ",")
         end_t = mktimestamp(end_time).replace(".", ",")
-        return (
-            f"{idx}\n"
-            f"{start_t} --> {end_t}\n"
-            f"{sub_text}\n"
-        )
+        lines = [sub_text[i : i + 5] for i in range(0, len(sub_text), 5)]
+        formatted_lines = "\n".join(lines)
+        return f"{idx}\n" f"{start_t} --> {end_t}\n" f"{formatted_lines}\n"
 
     start_time = -1.0
     sub_items = []
     sub_index = 0
 
+    # split text by punctuations
     script_lines = utils.split_string_by_punctuations(text)
+
+    # split text by length
+    script_lines = string_utils.split_string_by_max_word_length(
+        string_to_split=text, max_word_length=5
+    )
 
     def match_line(_sub_line: str, _sub_index: int):
         if len(script_lines) <= _sub_index:
@@ -1254,12 +1294,16 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
             try:
                 sbs = subtitles.file_to_subtitles(subtitle_file, encoding="utf-8")
                 duration = max([tb for ((ta, tb), txt) in sbs])
-                logger.info(f"completed, subtitle file created: {subtitle_file}, duration: {duration}")
+                logger.info(
+                    f"completed, subtitle file created: {subtitle_file}, duration: {duration}"
+                )
             except Exception as e:
                 logger.error(f"failed, error: {str(e)}")
                 os.remove(subtitle_file)
         else:
-            logger.warning(f"failed, sub_items len: {len(sub_items)}, script_lines len: {len(script_lines)}")
+            logger.warning(
+                f"failed, sub_items len: {len(sub_items)}, script_lines len: {len(script_lines)}"
+            )
 
     except Exception as e:
         logger.error(f"failed, error: {str(e)}")
@@ -1282,7 +1326,6 @@ if __name__ == "__main__":
 
     voices = get_all_azure_voices()
     print(len(voices))
-
 
     async def _do():
         temp_dir = utils.storage_dir("temp")
@@ -1332,11 +1375,12 @@ if __name__ == "__main__":
         for voice_name in voice_names:
             voice_file = f"{temp_dir}/tts-{voice_name}.mp3"
             subtitle_file = f"{temp_dir}/tts.mp3.srt"
-            sub_maker = azure_tts_v2(text=text, voice_name=voice_name, voice_file=voice_file)
+            sub_maker = azure_tts_v2(
+                text=text, voice_name=voice_name, voice_file=voice_file
+            )
             create_subtitle(sub_maker=sub_maker, text=text, subtitle_file=subtitle_file)
             audio_duration = get_audio_duration(sub_maker)
             print(f"voice: {voice_name}, audio duration: {audio_duration}s")
-
 
     loop = asyncio.get_event_loop_policy().get_event_loop()
     try:
