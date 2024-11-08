@@ -221,24 +221,24 @@ def start(task_id, params: VideoParams):
     )
 
     # for final_video_path in final_video_paths:
-    #     file_name = task_id + "-" + path.basename(final_video_path)
-    #     video_path = upload_to_aws_s3(
-    #         final_video_path,
-    #         config.aws.get("aws_s3_bucket", ""),
-    #         file_name,
-    #     )
+    file_name = task_id + "-" + path.basename(final_video_path)
+    video_path = upload_to_aws_s3(
+        final_video_path,
+        config.aws.get("aws_s3_bucket", ""),
+        file_name,
+    )
 
-    #     webhook_url = "https://hook.eu2.make.com/qrxnq99zpsefo4c24iywfwkrzer3ider"
-    #     headers = {"Content-Type": "application/json"}
-    #     data = {
-    #         "file_name": file_name,
-    #         "file_url": video_path,
-    #         "video_name": params.video_subject,
-    #     }
-    #     response = requests.post(webhook_url, headers=headers, json=data)
-    #     logger.info(
-    #         f"Webhook called with response: {response.status_code} - {response.text}"
-    #     )
+    webhook_url = "https://hook.eu2.make.com/qrxnq99zpsefo4c24iywfwkrzer3ider"
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "file_name": file_name,
+        "file_url": video_path,
+        "video_name": params.video_subject,
+    }
+    response = requests.post(webhook_url, headers=headers, json=data)
+    logger.info(
+        f"Webhook called with response: {response.status_code} - {response.text}"
+    )
 
     # log the file name and file path of aws
 
